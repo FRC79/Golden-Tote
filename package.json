@@ -11,6 +11,9 @@
   "dependencies": {
     "chalk": "^5.4.1",
     "discord.js": "^14.17.3",
+    "googleapis": "^144.0.0",
+    "node-cron": "^3.0.3",
+    "prompt-sync": "^4.2.0",
     "query-string": "^9.1.1"
   }
 }
