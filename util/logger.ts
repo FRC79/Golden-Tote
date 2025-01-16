@@ -1,40 +1,64 @@
-import fs from 'fs'
-import { parse } from 'path';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import type { ChalkInstance } from 'chalk';
 
+interface Logger {
+    meta: ImportMeta;
+    process: string;
+    chalkInstace?: ChalkInstance;
+    log(message: string): void;
+    logError(error: any): void;
+}
+
 function appendLogFile(message: string) {
-    const path = 'logs/logs.txt';
-    fs.open(path, 'a', (error, fd) => {
-        if (error?.code !== 'ENOENT') {
-            throw error;
-        } else if (error) {
-            fs.writeFile(path, message, error => {
-                if (error) throw error;
-            });
-        } else {
-            fs.appendFile(path, message, error => {
-                if (error) throw error;
-            })
+    const logFilePath = path.join('logs', 'logs.txt');
+    const logDir = path.dirname(logFilePath);
+
+    // Ensure the logs directory exists
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    // Append the log message to the file (fire and forget)
+    fs.appendFile(logFilePath, message + '\n', (error) => {
+        if (error) {
+            console.error('Failed to write to log file:', error);
         }
     });
 }
 
 function createLogger(meta: ImportMeta, chalkInstace?: ChalkInstance): Logger {
+    // Resolve the current file's name
+    const __filename = fileURLToPath(meta.url);
+    const processName = path.parse(__filename).name;
+
     return {
         meta,
-        process: parse(meta.file).name,
+        process: processName,
         chalkInstace,
         log(message: string) {
+            // Format the log message
             message = `[${this.process.toUpperCase()}] ${message}`;
+
+            // Immediately log to the console
             console.log(chalkInstace ? chalkInstace(message) : message);
-            //appendLogFile(message);
+
+            // Save the log to the file asynchronously
+            appendLogFile(message);
         },
         logError(error: any) {
-            let errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            let message = `[${this.process.toUpperCase()}] ${errorMessage}`;
-            console.error(chalkInstace ? chalkInstace(message) : message);
-        }
-    }
+            // Format the error message
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const message = `[${this.process.toUpperCase()}] ERROR: ${errorMessage}`;
+
+            // Immediately log to the console
+            console.error(chalkInstace ? chalkInstace.red(message) : message);
+
+            // Save the error log to the file asynchronously
+            appendLogFile(message);
+        },
+    };
 }
 
 export { createLogger };

@@ -11,7 +11,9 @@ logger.log('Deploying commands...');
 
 const proc = Bun.spawn(deployCommands, {
     cwd: './',
-    env: Bun.env
+    env: Bun.env,
+    stdio: ['ignore', 'pipe', 'pipe'], // Ignore `stdin`, capture `stdout` and `stderr`
+
 });
 
 const response = new Response(proc.stdout);

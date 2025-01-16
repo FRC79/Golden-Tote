@@ -192,7 +192,11 @@ async function execute(interaction: CommandInteraction) {
     weatherForecastEmbed.setFooter({
         text: 'What time is it! Krunch Time!'
     });
+    try{
     await interaction.reply({ embeds: [weatherForecastEmbed] })
+    } catch (error) {
+        await interaction.editReply({embeds: [weatherForecastEmbed]})
+    }
 }
 
 export { data, execute }
