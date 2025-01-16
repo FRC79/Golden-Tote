@@ -3,12 +3,57 @@ import { CommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.j
 
 let data = new SlashCommandBuilder()
     .setName('forecast')
-    .setDescription('Replies with the current forecast at the East Lake Community Library.');
+    .setDescription('Replies with the current forecast at the East Lake Community Library.')
+    .addStringOption(option =>
+        option.setName('day')
+            .setDescription('Day of the week (e.g. friday)')
+            .setRequired(false)
+            .addChoices(
+                    { name: 'Sunday', value: 'sunday' },
+                    { name: 'Monday', value: 'monday' },
+                    { name: 'Tuesday', value: 'tuesday' },
+                    { name: 'Wednesday', value: 'wednesday' },
+                    { name: 'Thursday', value: 'thursday' },
+                    { name: 'Friday', value: 'friday' },
+                    { name: 'Saturday', value: 'saturday' }
+            )
+
+    );
 
 async function execute(interaction: CommandInteraction) {
+    const inputDay = interaction.options.get('day')?.value as string;
+
+    const dayMap: Record<string, number> = {
+        sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+        thursday: 4, friday: 5, saturday: 6
+    };
+    const todayIndex = new Date().getDay();
+
+
+    let targetIndex = todayIndex;
+
+    if (inputDay && dayMap[inputDay.toLowerCase()] !== undefined) {
+        targetIndex = dayMap[inputDay.toLowerCase()];
+    }
+
+    let diff = (targetIndex - todayIndex + 7) % 7;
+    if (diff > 5) {
+        await interaction.reply('That meeting is too far ahead please ask for a closer meeting date.');
+        return;
+    }
+
+    const forecastDate = new Date();
+    if(diff === 0) {
+        if (forecastDate.getHours() >= 20) {
+            diff = 1;
+        }
+    }
+
+    forecastDate.setDate(forecastDate.getDate() + diff);
+
     const weatherForecastParams = queryString.stringify({
         apikey: Bun.env.TOMORROW_IO_API_KEY,
-        location: [28.1113128504228, -82.69373019226934], // ELHS lat & lon
+        location: [28.1113128504228, -82.69373019226934], 
         units: 'imperial',
         timestamps: ['1d']
     }, { arrayFormat: 'comma' });
@@ -24,7 +69,56 @@ async function execute(interaction: CommandInteraction) {
     const weatherForecastData: WeatherResponse = await weatherForecastRes.json();
 
     console.log(JSON.stringify(weatherForecastData));
-    const dailyWeatherForecastData = weatherForecastData?.timelines?.daily?.at(0);
+
+    const today = forecastDate.getDay();
+    const startTime = new Date(forecastDate);
+    const endTime = new Date(forecastDate);
+
+    if (today === 0 || today === 6) {
+        startTime.setHours(10, 0, 0, 0);
+        endTime.setHours(19, 0, 0, 0);
+    } else {
+        startTime.setHours(17, 0, 0, 0);
+        endTime.setHours(20, 0, 0, 0);
+    }
+
+    const hourlyWeatherForecastData = weatherForecastData?.timelines?.hourly;
+
+    const filteredHourlyWeatherForecastData = hourlyWeatherForecastData?.filter(
+        forecast => {
+            const forecastTime = new Date(forecast.time);
+            return forecastTime >= startTime && forecastTime <= endTime;
+        }
+    );
+
+    if (!filteredHourlyWeatherForecastData || filteredHourlyWeatherForecastData.length === 0) {
+        await interaction.reply('No forecast data available for that time.');
+        return;
+    }
+
+    const getAggregateRainPercentage = (data: any) => {
+        return Math.round(data.reduce((acc: any, forecast: any) => acc + forecast.values.precipitationProbability, 0) / data.length);
+    }
+
+
+    const getTemperatureEmoji = (temp: any) => {
+        if (temp >= 80) return '🥵'; 
+        if (temp >= 70) return '😎'; 
+        if (temp >= 50) return '🥶'; 
+        return '❄️'; 
+    };
+
+    const getRainEmoji = (rainChance: any) => {
+        if (rainChance >= 70) return '🌧️'; 
+        if (rainChance >= 40) return '🌦️'; 
+        if (rainChance >= 20) return '🌥️'; 
+        return '☀️'; 
+    };
+
+    const getAggregateTemperature = (data: any) => {
+        return Math.round(data.reduce((acc: any, forecast: any) => acc + forecast.values.temperature, 0) / data.length);
+    }
+
 
     const weatherForecastEmbed = new EmbedBuilder()
     .setTitle('Robotics Weather Forecast')
@@ -104,5 +198,6 @@ async function execute(interaction: CommandInteraction) {
         await interaction.editReply({embeds: [weatherForecastEmbed]})
     }
 }
-    
+
 export { data, execute }
+    
