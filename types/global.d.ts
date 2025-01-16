@@ -122,6 +122,45 @@ type Timelines = {
             windSpeedMin: number;
         };
     }>;
+    hourly: Array<{
+        time: string;
+        values: {
+            cloudBase: number;
+            cloudCeiling: number;
+            cloudCover: number;
+            dewPoint: number;
+            evapotranspiration: number;
+            freezingRainIntensity: number;
+            hailProbability: number;
+            hailSize: number;
+            humidity: number;
+            iceAccumulation: number;
+            iceAccumulationLwe: number;
+            moonPhase: number;
+            precipitationIntensity: number;
+            precipitationProbability: number;
+            pressureSurfaceLevel: number;
+            rainAccumulation: number;
+            rainAccumulationLwe: number;
+            rainIntensity: number;
+            sleetAccumulation: number;
+            sleetAccumulationLwe: number;
+            sleetIntensity: number;
+            snowAccumulation: number;
+            snowAccumulationLwe: number;
+            snowDepth: number;
+            snowIntensity: number;
+            temperatureApparent: number;
+            temperature: number;
+            uvHealthConcern: number;
+            uvIndex: number;
+            visibility: number;
+            weatherCode: number;
+            windDirection: number;
+            windGust: number;
+            windSpeed: number;
+        };
+    }>;
 };
 
 type Location = {
