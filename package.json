@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "chalk": "^5.4.1",
-    "discord.js": "^14.17.3"
+    "discord.js": "^14.17.3",
+    "query-string": "^9.1.1"
   }
 }
