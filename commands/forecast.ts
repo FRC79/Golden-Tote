@@ -7,8 +7,8 @@ let data = new SlashCommandBuilder()
 
 async function execute(interaction: CommandInteraction) {
     const weatherForecastParams = queryString.stringify({
-        apikey: Bun.env.TOMORROW_IO_KEY,
-        location: [28.1113128504228, -82.69373019226934],
+        apikey: Bun.env.TOMORROW_IO_API_KEY,
+        location: [28.1113128504228, -82.69373019226934], // ELHS lat & lon
         units: 'imperial',
         timestamps: ['1d']
     }, { arrayFormat: 'comma' });
