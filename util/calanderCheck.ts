@@ -3,7 +3,6 @@ import path from 'path';
 import { google } from 'googleapis';
 import { createLogger } from './logger';
 import chalk from 'chalk';
-import { OAuth2Client } from 'google-auth-library';
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 const credentialsPath = path.join(__dirname, '../credentials.json');
@@ -47,6 +46,17 @@ async function authorize() {
             }
         });
 
+        // Check if the token is expired and refresh it if necessary
+        if (!oAuth2Client.credentials.access_token) {
+            throw new Error('No access token found.');
+        }
+        const tokenInfo = await oAuth2Client.getTokenInfo(oAuth2Client.credentials.access_token);
+        const expiryDate = tokenInfo.expiry_date * 1000; // Convert expiry_date to milliseconds
+        if (expiryDate && expiryDate <= Date.now()) {
+            await oAuth2Client.getAccessToken();
+            logger.log('Access token refreshed.');
+        }
+
         logger.log('Authorization successful using stored tokens.');
         return oAuth2Client;
     } else {
@@ -83,18 +93,34 @@ export async function getCanceledEvents(): Promise<string[]> {
 }
 
 
-export async function getEvents(): Promise<any[]> {
+export async function getEvents(day?: string): Promise<any[]> {
     logger.log('Checking for events...');
     const auth = await authorize();
     const calendar = google.calendar({ version: 'v3', auth });
 
-    const now = new Date().toISOString();
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999); // End of the current day
+    const now = new Date();
+    let startOfDay = new Date();
+    let endOfDay = new Date();
+
+    if (day) {
+        const dayMap: Record<string, number> = {
+            sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+            thursday: 4, friday: 5, saturday: 6
+        };
+        const targetIndex = dayMap[day.toLowerCase()];
+        const todayIndex = now.getDay();
+        const diff = (targetIndex - todayIndex + 7) % 7;
+
+        startOfDay.setDate(now.getDate() + diff);
+        endOfDay.setDate(now.getDate() + diff);
+    }
+
+    startOfDay.setHours(0, 0, 0, 0);
+    endOfDay.setHours(23, 59, 59, 999);
 
     const res = await calendar.events.list({
         calendarId: 'primary',
-        timeMin: now,
+        timeMin: startOfDay.toISOString(),
         timeMax: endOfDay.toISOString(),
         singleEvents: true,
         orderBy: 'startTime',
