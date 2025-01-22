@@ -31,7 +31,7 @@ function saveToken(token: any) {
  * Get an authorized OAuth2 client using pre-stored access and refresh tokens.
  */
 async function authorize() {
-    const { client_secret, client_id, redirect_uris } = loadCredentials().installed;
+    const { client_secret, client_id, redirect_uris } = loadCredentials().web;
     const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
     // Load pre-stored tokens from token.json
@@ -39,30 +39,28 @@ async function authorize() {
         const token = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
         oAuth2Client.setCredentials(token);
 
-        // Automatically refresh the access token if needed
+        // Listen for token refresh events
         oAuth2Client.on('tokens', (tokens) => {
             if (tokens.refresh_token) {
                 saveToken(tokens); // Save the new refresh token if it changes
+                logger.log('Refresh token updated.');
             }
         });
 
-        // Check if the token is expired and refresh it if necessary
-        if (!oAuth2Client.credentials.access_token) {
-            throw new Error('No access token found.');
+        try {
+            // Force refresh the access token
+            const refreshedToken = await oAuth2Client.getAccessToken();
+            logger.log('Access token refreshed successfully.');
+            return oAuth2Client;
+        } catch (error: any) {
+            logger.logError('Error refreshing access token:' + error.message);
+            throw new Error('Failed to refresh access token. Please reauthenticate.');
         }
-        const tokenInfo = await oAuth2Client.getTokenInfo(oAuth2Client.credentials.access_token);
-        const expiryDate = tokenInfo.expiry_date * 1000; // Convert expiry_date to milliseconds
-        if (expiryDate && expiryDate <= Date.now()) {
-            await oAuth2Client.getAccessToken();
-            logger.log('Access token refreshed.');
-        }
-
-        logger.log('Authorization successful using stored tokens.');
-        return oAuth2Client;
     } else {
         throw new Error('No tokens found in token.json. Please authenticate the app first.');
     }
 }
+
 
 /**
  * Check for canceled events in Google Calendar.
