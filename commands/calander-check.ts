@@ -28,20 +28,24 @@ async function execute(interaction: CommandInteraction) {
     await interaction.deferReply(); // Defer reply for long-running tasks
 
     const inputDay = interaction.options.get('day')?.value as string;
-    const events = await getEvents(inputDay);
-
     try {
-        // Fetch events for the specified day
-        const roboticsMeeting = events.find(event => 
-            event.summary === 'Robotics Meeting'
-        );
+        const events = await getEvents(inputDay);
+
+        if (!events || events.length === 0) {
+            await interaction.editReply('No events found in the calendar.');
+            return;
+        }
+
+        const roboticsMeeting = events.find(event => event.summary === 'Robotics Meeting');
 
         if (roboticsMeeting) {
+            const forecastEmbed = await forecastExecute(interaction);
+
             await interaction.editReply({
                 content: `@everyone There is a meeting on ${inputDay || 'today'}!`,
+                embeds: forecastEmbed ? [forecastEmbed] : [],
                 allowedMentions: { parse: ['everyone'] },
             });
-            forecastExecute(interaction);
         } else {
             await interaction.editReply({
                 content: `@everyone No meeting on ${inputDay || 'today'}! This is Robert's fault :c`,
@@ -53,3 +57,4 @@ async function execute(interaction: CommandInteraction) {
         await interaction.editReply('An error occurred while checking the calendar.');
     }
 }
+
