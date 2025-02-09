@@ -1,6 +1,7 @@
 import { join } from 'path';
 import { readdir } from 'fs';
 import { Client, Collection, CommandInteraction, Events, GatewayIntentBits, TextChannel } from 'discord.js';
+import { CronJob } from 'cron';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -32,9 +33,10 @@ client.once(Events.ClientReady, async (client) => {
 
     const channel = await client.channels.fetch(channelId);
     if (channel?.isTextBased()) {
-        scheduleDailyTask(16, 0, async () => {
+	// Setup weekday cron job for mon-thurs. @ 4pm
+	const weekday_job = new Cronjob(
+		'0 16 * * 1-4', async () => {
             console.log("Posting daily message at 4 PM...");
-
             try {
                 // Run the calendar-check command
                 const command = commands.get('calendarcheck');
@@ -69,60 +71,66 @@ client.once(Events.ClientReady, async (client) => {
                 console.error('Error sending message:', error);
             }
         });
+
+	// Setup weekend job for sun @ 8am
+	const weekend_job = new Cronjob(
+		'0 8 * * 0', async () => {
+            console.log("Posting sunday message at 8 AM...");
+            try {
+                // Run the calendar-check command
+                const command = commands.get('calendarcheck');
+                if (command) {
+                    const fakeInteraction = {
+                        commandName: 'calendarcheck',
+                        options: {
+                            get: () => ({ value: null }),
+                        },
+                        deferReply: async () => {
+                            console.log('Deferred reply.');
+                        },
+                        editReply: async (message: any) => {
+                            if (message?.content || message?.embeds?.length > 0) {
+                                await (channel as TextChannel).send({
+                                    content: message.content ?? '',
+                                    embeds: message.embeds ?? [],
+                                    allowedMentions: { parse: ['everyone'] },
+                                });
+                            } else {
+                                console.error('Cannot send an empty message.');
+                            }
+                        },
+                    } as unknown as CommandInteraction;
+
+                    await command.execute(fakeInteraction);
+                } else {
+                    console.error('Command "calendarcheck" not found.');
+                    await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+            }
+        });
+
+	// Start jobs
+	weekday_job.start();
+	weekend_job.start();
+
+	// Check if we're running
+	if (weekday_job.running) {
+		console.log("Weekday posting job is started and currently running! :)")
+	} else {
+		console.error("Weekday posting job did not start for some reason! :(")
+	}
+	if (weekend_job.running) {
+		console.log("Weekend posting job is started and currently running! :)")
+	} else {
+		console.error("Weekend posting job did not start for some reason! :(")
+	}
     } else {
         console.error(`Channel with ID ${channelId} is not a text channel or could not be fetched.`);
     }
 });
 
-function scheduleDailyTask(hour: number, minute: number, task: () => void) {
-    const now = new Date();
-    const nextRun = new Date();
-
-    // Determine the time for the next run
-    const today = now.getDay();
-    if (today === 2) { // Sunday
-        nextRun.setHours(9, 0, 0, 0); // 9 AM on Sundays
-    } else {
-        nextRun.setHours(hour, minute, 0, 0); // Default time for other days
-    }
-
-    if (now > nextRun) {
-        // If the current time is past today's scheduled time, schedule for tomorrow
-        nextRun.setDate(nextRun.getDate() + 1);
-    }
-
-    const delay = nextRun.getTime() - now.getTime();
-
-    const executeTask = () => {
-        const today = new Date().getDay(); // Get current day of the week
-        if (today === 5 || today === 6) { // Skip Fridays and Saturdays
-            console.log('Skipping task for Friday or Saturday.');
-            return;
-        }
-
-        if (today === 0) {
-            console.log('Executing Sunday task at 9 AM.');
-        } else {
-            console.log('Executing daily task at default time.');
-        }
-
-        task(); // Execute the scheduled task
-    };
-
-    setTimeout(() => {
-        executeTask();
-        setInterval(() => {
-            const now = new Date();
-            if (now.getDay() === 0) { // Sunday
-                if (now.getHours() === 9 && now.getMinutes() === 0) {
-                    executeTask();
-                }
-            } else if (now.getHours() === hour && now.getMinutes() === minute) {
-                executeTask();
-            }
-        }, 60 * 1000); // Check every minute
-    }, delay);
-}
 
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
