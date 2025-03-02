@@ -25,7 +25,7 @@ readdir(commandsPath, (error, commandFiles) => {
 client.once(Events.ClientReady, async (client) => {
     console.log(`Ready! Logged in as ${client.user.tag}`);
 
-    const channelId = Bun.env.CHANNEL_ID; // Replace with your channel ID
+    const channelId = Bun.env.CHANNEL_ID; 
     if (!channelId) {
         console.error('CHANNEL_ID is not defined in the environment variables.');
         return;
@@ -33,18 +33,15 @@ client.once(Events.ClientReady, async (client) => {
 
     const channel = await client.channels.fetch(channelId);
     if (channel?.isTextBased()) {
-	// Setup weekday cron job for mon-thurs. @ 4pm
     const weekday_job = new CronJob(
         '0 16 * * 1-4',
         async () => {
           console.log("Posting daily message at 4 PM...");
           try {
-            // Run the calendar-check command
             const command = commands.get('calendarcheck');
             if (command) {
               const fakeInteraction = {
                 commandName: 'calendarcheck',
-                // Add a fake member with the "Goldentote" role to force @everyone mention
                 member: {
                   roles: {
                     cache: [
@@ -85,18 +82,16 @@ client.once(Events.ClientReady, async (client) => {
         }
       );
       
-      // Setup weekend job for Sunday @ 5:40 PM (or as required)
+      // Setup weekend job for Sunday @ 8:00 AM
       const weekend_job = new CronJob(
-        '44 17 * * 0',
+        '0 8 * * 0',
         async () => {
           console.log("Posting Sunday message at 5:40 PM...");
           try {
-            // Run the calendar-check command
             const command = commands.get('calendarcheck');
             if (command) {
               const fakeInteraction = {
                 commandName: 'calendarcheck',
-                // Add a fake member with the "Goldentote" role to force @everyone mention
                 member: {
                   roles: {
                     cache: [
