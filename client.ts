@@ -34,7 +34,7 @@ client.once(Events.ClientReady, async (client) => {
     const channel = await client.channels.fetch(channelId);
     if (channel?.isTextBased()) {
 	// Setup weekday cron job for mon-thurs. @ 4pm
-	const weekday_job = new Cronjob(
+    const weekday_job = new CronJob(
 		'0 16 * * 1-4', async () => {
             console.log("Posting daily message at 4 PM...");
             try {
@@ -73,7 +73,7 @@ client.once(Events.ClientReady, async (client) => {
         });
 
 	// Setup weekend job for sun @ 8am
-	const weekend_job = new Cronjob(
+    const weekend_job = new CronJob(
 		'0 8 * * 0', async () => {
             console.log("Posting sunday message at 8 AM...");
             try {

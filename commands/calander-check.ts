@@ -1,5 +1,5 @@
 import { CommandInteraction, SlashCommandBuilder } from 'discord.js';
-import { getCanceledEvents,getEvents } from '../util/calanderCheck'
+import { getEvents } from '../util/calanderCheck'
 import { createLogger } from '../util/logger';
 import { execute as forecastExecute } from './forecast';
 import chalk from 'chalk';
