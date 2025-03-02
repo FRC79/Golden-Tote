@@ -2,8 +2,11 @@ import { join } from 'path';
 import { readdir } from 'fs';
 import { Client, Collection, CommandInteraction, Events, GatewayIntentBits, TextChannel } from 'discord.js';
 import { CronJob } from 'cron';
+import { createLogger } from './util/logger';
+import chalk from 'chalk';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const logger = createLogger(import.meta, chalk.bold.bgGreen);
 
 const commands: Collection<string, Command> = new Collection();
 const commandsPath = join(import.meta.dir, 'commands');
@@ -56,7 +59,7 @@ client.once(Events.ClientReady, async (client) => {
                   get: () => ({ value: null }),
                 },
                 deferReply: async () => {
-                  console.log('Deferred reply.');
+                  logger.log('Deferred reply.');
                 },
                 editReply: async (message: any) => {
                   if (message?.content || (message?.embeds && message.embeds.length > 0)) {
@@ -66,18 +69,18 @@ client.once(Events.ClientReady, async (client) => {
                       allowedMentions: { parse: ['everyone'] },
                     });
                   } else {
-                    console.error('Cannot send an empty message.');
+                    logger.logError('Cannot send an empty message.');
                   }
                 },
               } as unknown as CommandInteraction;
       
               await command.execute(fakeInteraction);
             } else {
-              console.error('Command "calendarcheck" not found.');
+                logger.logError('Command "calendarcheck" not found.');
               await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
             }
           } catch (error) {
-            console.error('Error sending message:', error);
+            logger.logError('Error sending message:' + error);
           }
         }
       );
@@ -86,7 +89,7 @@ client.once(Events.ClientReady, async (client) => {
       const weekend_job = new CronJob(
         '0 8 * * 0',
         async () => {
-          console.log("Posting Sunday message at 5:40 PM...");
+            logger.log("Posting Sunday message at 5:40 PM...");
           try {
             const command = commands.get('calendarcheck');
             if (command) {
@@ -106,7 +109,7 @@ client.once(Events.ClientReady, async (client) => {
                   get: () => ({ value: null }),
                 },
                 deferReply: async () => {
-                  console.log('Deferred reply.');
+                    logger.log('Deferred reply.');
                 },
                 editReply: async (message: any) => {
                   if (message?.content || (message?.embeds && message.embeds.length > 0)) {
@@ -116,18 +119,18 @@ client.once(Events.ClientReady, async (client) => {
                       allowedMentions: { parse: ['everyone'] },
                     });
                   } else {
-                    console.error('Cannot send an empty message.');
+                    logger.logError('Cannot send an empty message.');
                   }
                 },
               } as unknown as CommandInteraction;
       
               await command.execute(fakeInteraction);
             } else {
-              console.error('Command "calendarcheck" not found.');
+                logger.logError('Command "calendarcheck" not found.');
               await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
             }
           } catch (error) {
-            console.error('Error sending message:', error);
+            logger.logError('Error sending message:' +  error);
           }
         }
       );
@@ -138,17 +141,17 @@ client.once(Events.ClientReady, async (client) => {
 
 	// Check if we're running
 	if (weekday_job.running) {
-		console.log("Weekday posting job is started and currently running! :)")
+		logger.log("Weekday posting job is started and currently running! :)")
 	} else {
-		console.error("Weekday posting job did not start for some reason! :(")
+		logger.logError("Weekday posting job did not start for some reason! :(")
 	}
 	if (weekend_job.running) {
-		console.log("Weekend posting job is started and currently running! :)")
+		logger.log("Weekend posting job is started and currently running! :)")
 	} else {
-		console.error("Weekend posting job did not start for some reason! :(")
-	}
+		logger.logError("Weekend posting job did not start for some reason! :(")
+	}logger
     } else {
-        console.error(`Channel with ID ${channelId} is not a text channel or could not be fetched.`);
+        logger.logError(`Channel with ID ${channelId} is not a text channel or could not be fetched.`);
     }
 });
 
@@ -159,14 +162,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const command = commands.get(interaction.commandName);
 
     if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
+        logger.logError(`No command matching ${interaction.commandName} was found.`);
         return;
     }
 
     try {
         await command.execute(interaction);
     } catch (error) {
-        console.error(error);
+        logger.logError(error);
 
         let content: string = 'There was an error while executing this command!';
 
