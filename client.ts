@@ -35,82 +35,108 @@ client.once(Events.ClientReady, async (client) => {
     if (channel?.isTextBased()) {
 	// Setup weekday cron job for mon-thurs. @ 4pm
     const weekday_job = new CronJob(
-		'0 16 * * 1-4', async () => {
-            console.log("Posting daily message at 4 PM...");
-            try {
-                // Run the calendar-check command
-                const command = commands.get('calendarcheck');
-                if (command) {
-                    const fakeInteraction = {
-                        commandName: 'calendarcheck',
-                        options: {
-                            get: () => ({ value: null }),
-                        },
-                        deferReply: async () => {
-                            console.log('Deferred reply.');
-                        },
-                        editReply: async (message: any) => {
-                            if (message?.content || message?.embeds?.length > 0) {
-                                await (channel as TextChannel).send({
-                                    content: message.content ?? '',
-                                    embeds: message.embeds ?? [],
-                                    allowedMentions: { parse: ['everyone'] },
-                                });
-                            } else {
-                                console.error('Cannot send an empty message.');
-                            }
-                        },
-                    } as unknown as CommandInteraction;
-
-                    await command.execute(fakeInteraction);
-                } else {
-                    console.error('Command "calendarcheck" not found.');
-                    await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
-                }
-            } catch (error) {
-                console.error('Error sending message:', error);
+        '0 16 * * 1-4',
+        async () => {
+          console.log("Posting daily message at 4 PM...");
+          try {
+            // Run the calendar-check command
+            const command = commands.get('calendarcheck');
+            if (command) {
+              const fakeInteraction = {
+                commandName: 'calendarcheck',
+                // Add a fake member with the "Goldentote" role to force @everyone mention
+                member: {
+                  roles: {
+                    cache: [
+                      { id: 'GoldentoteId', name: 'Goldentote' }
+                    ],
+                    some: function(callback: (value: any, index: number, array: any[]) => boolean) {
+                      return this.cache.some(callback);
+                    }
+                  }
+                },
+                options: {
+                  get: () => ({ value: null }),
+                },
+                deferReply: async () => {
+                  console.log('Deferred reply.');
+                },
+                editReply: async (message: any) => {
+                  if (message?.content || (message?.embeds && message.embeds.length > 0)) {
+                    await (channel as TextChannel).send({
+                      content: message.content ?? '',
+                      embeds: message.embeds ?? [],
+                      allowedMentions: { parse: ['everyone'] },
+                    });
+                  } else {
+                    console.error('Cannot send an empty message.');
+                  }
+                },
+              } as unknown as CommandInteraction;
+      
+              await command.execute(fakeInteraction);
+            } else {
+              console.error('Command "calendarcheck" not found.');
+              await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
             }
-        });
-
-	// Setup weekend job for sun @ 8am
-    const weekend_job = new CronJob(
-		'0 8 * * 0', async () => {
-            console.log("Posting sunday message at 8 AM...");
-            try {
-                // Run the calendar-check command
-                const command = commands.get('calendarcheck');
-                if (command) {
-                    const fakeInteraction = {
-                        commandName: 'calendarcheck',
-                        options: {
-                            get: () => ({ value: null }),
-                        },
-                        deferReply: async () => {
-                            console.log('Deferred reply.');
-                        },
-                        editReply: async (message: any) => {
-                            if (message?.content || message?.embeds?.length > 0) {
-                                await (channel as TextChannel).send({
-                                    content: message.content ?? '',
-                                    embeds: message.embeds ?? [],
-                                    allowedMentions: { parse: ['everyone'] },
-                                });
-                            } else {
-                                console.error('Cannot send an empty message.');
-                            }
-                        },
-                    } as unknown as CommandInteraction;
-
-                    await command.execute(fakeInteraction);
-                } else {
-                    console.error('Command "calendarcheck" not found.');
-                    await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
-                }
-            } catch (error) {
-                console.error('Error sending message:', error);
+          } catch (error) {
+            console.error('Error sending message:', error);
+          }
+        }
+      );
+      
+      // Setup weekend job for Sunday @ 5:40 PM (or as required)
+      const weekend_job = new CronJob(
+        '44 17 * * 0',
+        async () => {
+          console.log("Posting Sunday message at 5:40 PM...");
+          try {
+            // Run the calendar-check command
+            const command = commands.get('calendarcheck');
+            if (command) {
+              const fakeInteraction = {
+                commandName: 'calendarcheck',
+                // Add a fake member with the "Goldentote" role to force @everyone mention
+                member: {
+                  roles: {
+                    cache: [
+                      { id: 'GoldentoteId', name: 'Goldentote' }
+                    ],
+                    some: function(callback: (value: any, index: number, array: any[]) => boolean) {
+                      return this.cache.some(callback);
+                    }
+                  }
+                },
+                options: {
+                  get: () => ({ value: null }),
+                },
+                deferReply: async () => {
+                  console.log('Deferred reply.');
+                },
+                editReply: async (message: any) => {
+                  if (message?.content || (message?.embeds && message.embeds.length > 0)) {
+                    await (channel as TextChannel).send({
+                      content: message.content ?? '',
+                      embeds: message.embeds ?? [],
+                      allowedMentions: { parse: ['everyone'] },
+                    });
+                  } else {
+                    console.error('Cannot send an empty message.');
+                  }
+                },
+              } as unknown as CommandInteraction;
+      
+              await command.execute(fakeInteraction);
+            } else {
+              console.error('Command "calendarcheck" not found.');
+              await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
             }
-        });
-
+          } catch (error) {
+            console.error('Error sending message:', error);
+          }
+        }
+      );
+      
 	// Start jobs
 	weekday_job.start();
 	weekend_job.start();
