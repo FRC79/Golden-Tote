@@ -1,8 +1,12 @@
 import { join } from 'path';
 import { readdir } from 'fs';
 import { Client, Collection, CommandInteraction, Events, GatewayIntentBits, TextChannel } from 'discord.js';
+import { CronJob } from 'cron';
+import { createLogger } from './util/logger';
+import chalk from 'chalk';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const logger = createLogger(import.meta, chalk.bold.bgGreen);
 
 const commands: Collection<string, Command> = new Collection();
 const commandsPath = join(import.meta.dir, 'commands');
@@ -24,7 +28,7 @@ readdir(commandsPath, (error, commandFiles) => {
 client.once(Events.ClientReady, async (client) => {
     console.log(`Ready! Logged in as ${client.user.tag}`);
 
-    const channelId = Bun.env.CHANNEL_ID; // Replace with your channel ID
+    const channelId = Bun.env.CHANNEL_ID; 
     if (!channelId) {
         console.error('CHANNEL_ID is not defined in the environment variables.');
         return;
@@ -32,97 +36,125 @@ client.once(Events.ClientReady, async (client) => {
 
     const channel = await client.channels.fetch(channelId);
     if (channel?.isTextBased()) {
-        scheduleDailyTask(16, 0, async () => {
-            console.log("Posting daily message at 4 PM...");
-
-            try {
-                // Run the calendar-check command
-                const command = commands.get('calendarcheck');
-                if (command) {
-                    const fakeInteraction = {
-                        commandName: 'calendarcheck',
-                        options: {
-                            get: () => ({ value: null }),
-                        },
-                        deferReply: async () => {
-                            console.log('Deferred reply.');
-                        },
-                        editReply: async (message: any) => {
-                            if (message?.content || message?.embeds?.length > 0) {
-                                await (channel as TextChannel).send({
-                                    content: message.content ?? '',
-                                    embeds: message.embeds ?? [],
-                                    allowedMentions: { parse: ['everyone'] },
-                                });
-                            } else {
-                                console.error('Cannot send an empty message.');
-                            }
-                        },
-                    } as unknown as CommandInteraction;
-
-                    await command.execute(fakeInteraction);
-                } else {
-                    console.error('Command "calendarcheck" not found.');
-                    await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
-                }
-            } catch (error) {
-                console.error('Error sending message:', error);
+    const weekday_job = new CronJob(
+        '0 16 * * 1-4',
+        async () => {
+          console.log("Posting daily message at 4 PM...");
+          try {
+            const command = commands.get('calendarcheck');
+            if (command) {
+              const fakeInteraction = {
+                commandName: 'calendarcheck',
+                member: {
+                  roles: {
+                    cache: [
+                      { id: 'GoldentoteId', name: 'Goldentote' }
+                    ],
+                    some: function(callback: (value: any, index: number, array: any[]) => boolean) {
+                      return this.cache.some(callback);
+                    }
+                  }
+                },
+                options: {
+                  get: () => ({ value: null }),
+                },
+                deferReply: async () => {
+                  logger.log('Deferred reply.');
+                },
+                editReply: async (message: any) => {
+                  if (message?.content || (message?.embeds && message.embeds.length > 0)) {
+                    await (channel as TextChannel).send({
+                      content: message.content ?? '',
+                      embeds: message.embeds ?? [],
+                      allowedMentions: { parse: ['everyone'] },
+                    });
+                  } else {
+                    logger.logError('Cannot send an empty message.');
+                  }
+                },
+              } as unknown as CommandInteraction;
+      
+              await command.execute(fakeInteraction);
+            } else {
+                logger.logError('Command "calendarcheck" not found.');
+              await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
             }
-        });
+          } catch (error) {
+            logger.logError('Error sending message:' + error);
+          }
+        }
+      );
+      
+      // Setup weekend job for Sunday @ 8:00 AM
+      const weekend_job = new CronJob(
+        '0 8 * * 0',
+        async () => {
+            logger.log("Posting Sunday message at 5:40 PM...");
+          try {
+            const command = commands.get('calendarcheck');
+            if (command) {
+              const fakeInteraction = {
+                commandName: 'calendarcheck',
+                member: {
+                  roles: {
+                    cache: [
+                      { id: 'GoldentoteId', name: 'Goldentote' }
+                    ],
+                    some: function(callback: (value: any, index: number, array: any[]) => boolean) {
+                      return this.cache.some(callback);
+                    }
+                  }
+                },
+                options: {
+                  get: () => ({ value: null }),
+                },
+                deferReply: async () => {
+                    logger.log('Deferred reply.');
+                },
+                editReply: async (message: any) => {
+                  if (message?.content || (message?.embeds && message.embeds.length > 0)) {
+                    await (channel as TextChannel).send({
+                      content: message.content ?? '',
+                      embeds: message.embeds ?? [],
+                      allowedMentions: { parse: ['everyone'] },
+                    });
+                  } else {
+                    logger.logError('Cannot send an empty message.');
+                  }
+                },
+              } as unknown as CommandInteraction;
+      
+              await command.execute(fakeInteraction);
+            } else {
+                logger.logError('Command "calendarcheck" not found.');
+              await (channel as TextChannel).send('Command "calendarcheck" could not be executed.');
+            }
+          } catch (error) {
+            logger.logError('Error sending message:' +  error);
+          }
+        }
+      );
+      
+	// Start jobs
+	weekday_job.start();
+	weekend_job.start();
+
+	// Check if we're running
+	if (weekday_job.running) {
+		logger.log("Weekday posting job is started and currently running! :)")
+	} else {
+		logger.logError("Weekday posting job did not start for some reason! :(")
+	}
+	if (weekend_job.running) {
+		logger.log("Weekend posting job is started and currently running! :)")
+	} else {
+		logger.logError("Weekend posting job did not start for some reason! :(")
+	}logger
     } else {
-        console.error(`Channel with ID ${channelId} is not a text channel or could not be fetched.`);
+        logger.logError(`Channel with ID ${channelId} is not a text channel or could not be fetched.`);
     }
 });
 
-function scheduleDailyTask(hour: number, minute: number, task: () => void) {
-    const now = new Date();
-    const nextRun = new Date();
-
-    // Determine the time for the next run
-    const today = now.getDay();
-    if (today === 2) { // Sunday
-        nextRun.setHours(9, 0, 0, 0); // 9 AM on Sundays
-    } else {
-        nextRun.setHours(hour, minute, 0, 0); // Default time for other days
-    }
-
-    if (now > nextRun) {
-        // If the current time is past today's scheduled time, schedule for tomorrow
-        nextRun.setDate(nextRun.getDate() + 1);
-    }
-
-    const delay = nextRun.getTime() - now.getTime();
-
-    const executeTask = () => {
-        const today = new Date().getDay(); // Get current day of the week
-        if (today === 5 || today === 6) { // Skip Fridays and Saturdays
-            console.log('Skipping task for Friday or Saturday.');
-            return;
-        }
-
-        if (today === 0) {
-            console.log('Executing Sunday task at 9 AM.');
-        } else {
-            console.log('Executing daily task at default time.');
-        }
-
-        task(); // Execute the scheduled task
-    };
-
-    setTimeout(() => {
-        executeTask();
-        setInterval(() => {
-            const now = new Date();
-            if (now.getDay() === 0) { // Sunday
-                if (now.getHours() === 9 && now.getMinutes() === 0) {
-                    executeTask();
-                }
-            } else if (now.getHours() === hour && now.getMinutes() === minute) {
-                executeTask();
-            }
-        }, 60 * 1000); // Check every minute
-    }, delay);
-}
 
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -130,14 +162,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const command = commands.get(interaction.commandName);
 
     if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
+        logger.logError(`No command matching ${interaction.commandName} was found.`);
         return;
     }
 
     try {
         await command.execute(interaction);
     } catch (error) {
-        console.error(error);
+        logger.logError(error);
 
         let content: string = 'There was an error while executing this command!';
 

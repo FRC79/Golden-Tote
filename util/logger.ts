@@ -9,7 +9,10 @@ interface Logger {
     chalkInstace?: ChalkInstance;
     log(message: string): void;
     logError(error: any): void;
+    logMultiple(...messages: string[]): void;
 }
+
+
 
 function appendLogFile(message: string) {
     const logFilePath = path.join('logs', 'logs.txt');
@@ -46,6 +49,16 @@ function createLogger(meta: ImportMeta, chalkInstace?: ChalkInstance): Logger {
 
             // Save the log to the file asynchronously
             appendLogFile(message);
+        },
+        logMultiple(...messages: string[]) {
+            // Format the log message
+            const formattedMessages = messages.map(message => `[${this.process.toUpperCase()}] ${message}`).join(' ');
+
+            // Immediately log to the console
+            console.log(chalkInstace ? chalkInstace(formattedMessages) : formattedMessages);
+
+            // Save the log to the file asynchronously
+            appendLogFile(formattedMessages);
         },
         logError(error: any) {
             // Format the error message
