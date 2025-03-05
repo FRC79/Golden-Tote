@@ -1,12 +1,13 @@
 import fs from 'fs';
+import readline from 'readline';
 import path from 'path';
-import { google } from 'googleapis';
+import { google, Auth } from 'googleapis';
 import { createLogger } from './logger';
 import chalk from 'chalk';
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 const credentialsPath = path.join(__dirname, '../credentials.json');
-const tokenPath = path.join(__dirname, "../token.json");
+const tokenPath = path.join(__dirname, '../token.json');
 
 const logger = createLogger(import.meta, chalk.bold.bgWhite);
 logger.log('Logger created in calendarCheck.ts');
@@ -15,8 +16,22 @@ logger.log('Logger created in calendarCheck.ts');
  * Load credentials from the credentials.json file.
  */
 function loadCredentials() {
-    const content = fs.readFileSync(credentialsPath, 'utf8');
-    return JSON.parse(content);
+    if (!fs.existsSync(credentialsPath)) {
+        throw new Error(`Credentials file not found: ${credentialsPath}`);
+    }
+
+    try {
+        const content = fs.readFileSync(credentialsPath, 'utf8');
+        const parsedCredentials = JSON.parse(content);
+
+        if (!parsedCredentials.installed) {
+            throw new Error('Invalid credentials.json format: Missing "installed" property.');
+        }
+
+        return parsedCredentials;
+    } catch (error: any) {
+        throw new Error(`Failed to load credentials.json: ${error.message}`);
+    }
 }
 
 /**
@@ -30,44 +45,75 @@ function saveToken(token: any) {
 /**
  * Get an authorized OAuth2 client using pre-stored access and refresh tokens.
  */
-async function authorize() {
-    const { client_secret, client_id, redirect_uris } = loadCredentials().web;
+async function authorize(): Promise<Auth.OAuth2Client> {
+    const { client_secret, client_id, redirect_uris } = loadCredentials().installed;
     const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
-    // Load pre-stored tokens from token.json
+    // If token.json exists, load it
     if (fs.existsSync(tokenPath)) {
         const token = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
         oAuth2Client.setCredentials(token);
 
-        // Listen for token refresh events
-        oAuth2Client.on('tokens', (tokens) => {
-            if (tokens.refresh_token) {
-                saveToken(tokens); // Save the new refresh token if it changes
-                logger.log('Refresh token updated.');
-            }
-        });
-
         try {
-            // Force refresh the access token
-            const refreshedToken = await oAuth2Client.getAccessToken();
-            logger.log('Access token refreshed successfully.');
+            // Check if the access token is still valid
+            await oAuth2Client.getRequestHeaders();
+            logger.log('Existing token is still valid.');
             return oAuth2Client;
-        } catch (error: any) {
-            logger.logError('Error refreshing access token:' + error.message);
-            throw new Error('Failed to refresh access token. Please reauthenticate.');
+        } catch (error) {
+            logger.logError('Access token expired, refreshing...');
+
+            // Refresh the access token
+            const { credentials } = await oAuth2Client.refreshAccessToken();
+            oAuth2Client.setCredentials(credentials);
+            saveToken(credentials);
+            return oAuth2Client;
         }
     } else {
-        throw new Error('No tokens found in token.json. Please authenticate the app first.');
+        // If token.json doesn't exist, get a new token
+        return await getNewToken(oAuth2Client);
     }
 }
 
+/**
+ * Get a new OAuth token interactively.
+ */
+async function getNewToken(oAuth2Client: Auth.OAuth2Client): Promise<Auth.OAuth2Client> {
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: 'offline', // Ensures a refresh token is issued
+        scope: SCOPES,
+        prompt: 'consent', // Forces a new refresh token
+    });
+
+    console.log(`Authorize this app by visiting this URL:\n${authUrl}`);
+
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    return new Promise((resolve, reject) => {
+        rl.question('Enter the code from that page here: ', async (code) => {
+            rl.close();
+            try {
+                const { tokens } = await oAuth2Client.getToken(code);
+                oAuth2Client.setCredentials(tokens);
+                saveToken(tokens);
+                logger.log('New token obtained and saved.');
+                resolve(oAuth2Client);
+            } catch (error) {
+                logger.logError('Error retrieving access token:' +  error);
+                reject(error);
+            }
+        });
+    });
+}
 
 /**
  * Check for canceled events in Google Calendar.
  */
 export async function getCanceledEvents(): Promise<string[]> {
     logger.log('Checking for canceled events...');
-    const auth = await authorize();
+    const auth: Auth.OAuth2Client = await authorize();
     const calendar = google.calendar({ version: 'v3', auth });
 
     const now = new Date().toISOString();
@@ -90,10 +136,12 @@ export async function getCanceledEvents(): Promise<string[]> {
     return canceledEvents;
 }
 
-
+/**
+ * Retrieve events from Google Calendar.
+ */
 export async function getEvents(day?: string): Promise<any[]> {
-    logger.log('Checking for events...');
-    const auth = await authorize();
+    logger.log('Checking for canceled events...');
+    const auth: Auth.OAuth2Client = await authorize();
     const calendar = google.calendar({ version: 'v3', auth });
 
     const now = new Date();
