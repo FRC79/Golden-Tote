@@ -1,5 +1,5 @@
 import { CommandInteraction, SlashCommandBuilder, GuildMember } from 'discord.js';
-import { getEvents } from '../util/calanderCheck';
+import { getEvents } from '../util/calander';
 import { createLogger } from '../util/logger';
 import { execute as forecastExecute } from './forecast';
 import chalk from 'chalk';
@@ -7,8 +7,8 @@ import chalk from 'chalk';
 const logger = createLogger(import.meta, chalk.bold.bgWhite);
 
 let data = new SlashCommandBuilder()
-    .setName('calendarcheck')
-    .setDescription('Checks Google Calendar for canceled events.')
+    .setName('calendar-check')
+    .setDescription('Checks the local calendar for events.')
     .addStringOption(option =>
         option.setName('day')
             .setDescription('Day of the week (e.g. friday)')
@@ -27,37 +27,36 @@ let data = new SlashCommandBuilder()
 export { data, execute };
 
 async function execute(interaction: CommandInteraction) {
-    await interaction.deferReply(); // Defer reply for long-running tasks
+    await interaction.deferReply();
 
-    // Check if the member has the "Goldentote" role.
     const member = interaction.member as GuildMember | null;
     const mentionEveryone = member 
         ? member.roles.cache.some(role => role.name === 'Goldentote')
         : false;
-    // Build the mention string and allowedMentions object accordingly.
     const mentionString = mentionEveryone ? '@everyone ' : '';
     const allowedMentionsOption = mentionEveryone ? { allowedMentions: { parse: ['everyone'] as const } } : {};
 
-    const inputDay = interaction.options.get('day')?.value as string;
+    let inputDay = interaction.options.get('day')?.value as string;
+    if (inputDay == null) {
+        const today = new Date();
+        inputDay = today.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+    }
+    
     try {
         const events = await getEvents(inputDay);
+        logger.log(`Loaded events: ${JSON.stringify(events, null, 2)}`);
 
         if (!events || events.length === 0) {
             await interaction.editReply('No events found in the calendar.');
             return;
         }
-
-        const roboticsMeeting = events.find(event => event.summary === 'Robotics Meeting');
+        const roboticsMeeting = events[0];
 
         if (roboticsMeeting) {
-            // Determine meeting start and end times.
-            // Adjust based on how your event object stores times.
-            // Here we check for a dateTime property, falling back to the value directly.
-            const meetingStart = new Date(roboticsMeeting.start.dateTime || roboticsMeeting.start);
-            const meetingEnd = new Date(roboticsMeeting.end.dateTime || roboticsMeeting.end);
+            const meetingStart = new Date(roboticsMeeting.start);
+            const meetingEnd = new Date(roboticsMeeting.end);
             const now = new Date();
 
-            // If the current time is within the meeting window, do not call the forecast.
             if (now >= meetingStart && now <= meetingEnd) {
                 await interaction.editReply({
                     content: `${mentionString}The meeting is happening right now!`,
@@ -66,7 +65,6 @@ async function execute(interaction: CommandInteraction) {
                 return;
             }
 
-            // Otherwise, run the forecast command.
             const forecastEmbed = await forecastExecute(interaction);
             await interaction.editReply({
                 content: `${mentionString}There is a meeting on ${inputDay || 'today'}!`,

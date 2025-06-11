@@ -12,7 +12,7 @@ logger.log('Deploying commands...');
 const proc = Bun.spawn(deployCommands, {
     cwd: './',
     env: Bun.env,
-    stdio: ['ignore', 'pipe', 'pipe'], // Ignore `stdin`, capture `stdout` and `stderr`
+    stdio: ['ignore', 'pipe', 'pipe'], 
 
 });
 

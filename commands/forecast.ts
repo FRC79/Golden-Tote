@@ -2,6 +2,7 @@ import queryString from 'query-string';
 import { CommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
 import { createLogger } from '../util/logger';
 import chalk from 'chalk';
+import { getEvents } from '../util/calander';
 
 const logger = createLogger(import.meta, chalk.bold.bgWhite);
 
@@ -33,11 +34,9 @@ async function execute(interaction: CommandInteraction) {
     const todayIndex = new Date().getDay();
 
     let targetIndex = todayIndex;
-
     if (inputDay && dayMap[inputDay.toLowerCase()] !== undefined) {
         targetIndex = dayMap[inputDay.toLowerCase()];
     }
-
     let diff = (targetIndex - todayIndex + 7) % 7;
     if (diff > 5) {
         await interaction.reply('That meeting is too far ahead please ask for a closer meeting date.');
@@ -45,37 +44,49 @@ async function execute(interaction: CommandInteraction) {
     }
 
     const forecastDate = new Date();
-    if(diff === 0) {
-        if (forecastDate.getHours() >= 20) {
-            diff = 1;
+    if (diff === 0 && forecastDate.getHours() >= 20) {
+        diff = 1;
+    }
+    forecastDate.setDate(forecastDate.getDate() + diff);
+
+    // --- NEW: Check for event on this day ---
+    const events = await getEvents(Object.keys(dayMap)[targetIndex]);
+    // Find the first event that starts on the forecastDate
+    const event = events.find(ev => {
+        const evStart = new Date(ev.start);
+        return evStart.getFullYear() === forecastDate.getFullYear() &&
+            evStart.getMonth() === forecastDate.getMonth() &&
+            evStart.getDate() === forecastDate.getDate();
+    });
+
+    let startTime: Date, endTime: Date;
+    if (event) {
+        startTime = new Date(event.start);
+        endTime = new Date(event.end);
+    } else {
+        // fallback to default meeting times
+        const meetingDay = forecastDate.getDay();
+        startTime = new Date(forecastDate);
+        endTime = new Date(forecastDate);
+        if (meetingDay === 0 || meetingDay === 6) {
+            startTime.setHours(10, 0, 0, 0);
+            endTime.setHours(19, 0, 0, 0);
+        } else {
+            startTime.setHours(17, 0, 0, 0);
+            endTime.setHours(20, 0, 0, 0);
         }
     }
 
-    forecastDate.setDate(forecastDate.getDate() + diff);
-
-    // Set meeting start and end times based on day (weekend vs. weekday)
-    const meetingDay = forecastDate.getDay();
-    const startTime = new Date(forecastDate);
-    const endTime = new Date(forecastDate);
-
-    if (meetingDay === 0 || meetingDay === 6) {
-        startTime.setHours(10, 0, 0, 0);
-        endTime.setHours(19, 0, 0, 0);
-    } else {
-        startTime.setHours(17, 0, 0, 0);
-        endTime.setHours(20, 0, 0, 0);
-    }
-
     // If the forecast is for today and current time is within meeting time, notify that meeting is happening.
-    if(diff === 0) {
+    if (diff === 0) {
         const now = new Date();
-        if(now >= startTime && now <= endTime) {
+        if (now >= startTime && now <= endTime) {
             await interaction.reply('Meeting is happening right now, no forecast available.');
             return;
         }
     }
 
-    // Continue with weather forecast if meeting is not happening
+    // --- Fetch weather as before ---
     const weatherForecastParams = queryString.stringify({
         apikey: Bun.env.TOMORROW_IO_API_KEY,
         location: [28.1113128504228, -82.69373019226934], 
@@ -97,6 +108,7 @@ async function execute(interaction: CommandInteraction) {
 
     const hourlyWeatherForecastData = weatherForecastData?.timelines?.hourly;
 
+    // Filter hourly forecast data to the event window
     const filteredHourlyWeatherForecastData = hourlyWeatherForecastData?.filter(
         forecast => {
             const forecastTime = new Date(forecast.time);
@@ -127,85 +139,68 @@ async function execute(interaction: CommandInteraction) {
         return '☀️'; 
     };
 
-    const getAggregateTemperature = (data: any[]) => {
-      if (!data.length) return 0;
-      return Math.round(
-        data.reduce((acc, forecast) => acc + forecast.values.temperature, 0) / data.length
-      );
-    };
 
+
+    // --- NEW: Split into 3 intervals if event is longer than 3 hours ---
+    const eventDurationHours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+    let intervals: { label: string, data: any[] }[] = [];
+
+    if (eventDurationHours > 3) {
+        // Split into 3 intervals
+        const intervalLength = Math.floor(filteredHourlyWeatherForecastData.length / 3);
+        for (let i = 0; i < 3; i++) {
+            const startIdx = i * intervalLength;
+            const endIdx = i === 2 ? filteredHourlyWeatherForecastData.length : (i + 1) * intervalLength;
+            const intervalStart = new Date(startTime.getTime() + (i * (endTime.getTime() - startTime.getTime()) / 3));
+            const intervalEnd = new Date(startTime.getTime() + ((i + 1) * (endTime.getTime() - startTime.getTime()) / 3));
+            intervals.push({
+                label: `${intervalStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+                data: filteredHourlyWeatherForecastData.slice(startIdx, endIdx)
+            });
+        }
+    } else {
+        // Single interval for short events
+        intervals.push({
+            label: `${startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            data: filteredHourlyWeatherForecastData
+        });
+    }
+
+    // --- Build embed ---
     const weatherForecastEmbed = new EmbedBuilder()
         .setTitle('Robotics Weather Forecast')
-        .setDescription(`Weather forecast for ${forecastDate.toLocaleDateString()}`)
+        .setDescription(`Weather forecast for ${forecastDate.toLocaleDateString()}${event ? `\nEvent: ${event.summary}` : ''}`)
         .setColor('#1E90FF')
         .setThumbnail(
             'https://static.wixstatic.com/media/8ce68c_fd250bd70999440dbaf90da0a428f3be~mv2.png/v1/fit/w_2500,h_1330,al_c/8ce68c_fd250bd70999440dbaf90da0a428f3be~mv2.png'
         );
 
-    const weekdayTimeEmojis = ['🕔', '🕕', '🕖'];
+    // Split into 3 intervals and aggregate
+    const blocks = 3;
+    const chunkSize = Math.ceil(filteredHourlyWeatherForecastData.length / blocks);
 
-    if (meetingDay === 0 || meetingDay === 6) {
-        logger.log('Weekend forecast');
-        // Log the weather forecast for the weekend
-        logger.logMultiple('Weather forecast data:', JSON.stringify(filteredHourlyWeatherForecastData, null, 2));
-        weatherForecastEmbed.addFields(
-            {
-                name: 'Morning 🌅',
-                value: [
-                    '10:00 AM - 12:00 PM',
-                    `Temp: ${getAggregateTemperature(filteredHourlyWeatherForecastData.slice(0, 3))}°F ${getTemperatureEmoji(
-                        getAggregateTemperature(filteredHourlyWeatherForecastData.slice(0, 3))
-                    )}`,
-                    `${getAggregateRainPercentage(filteredHourlyWeatherForecastData.slice(0, 3))}% ${getRainEmoji( getAggregateRainPercentage(filteredHourlyWeatherForecastData.slice(0, 3)) )}`
-                ].join('\n'),
-                inline: true
-            },
-            {
-                name: 'Afternoon 🌤️',
-                value: [
-                    '1:00 PM - 3:00 PM',
-                    `Temp: ${getAggregateTemperature(filteredHourlyWeatherForecastData.slice(3, 6))}°F ${getTemperatureEmoji(
-                        getAggregateTemperature(filteredHourlyWeatherForecastData.slice(3, 6))
-                    )}`,
-                    `${getAggregateRainPercentage(filteredHourlyWeatherForecastData.slice(3, 6))}% ${getRainEmoji( getAggregateRainPercentage(filteredHourlyWeatherForecastData.slice(3, 6)) )}`
-                ].join('\n'),
-                inline: true
-            },
-            {
-                name: 'Evening 🌆',
-                value: [
-                    '4:00 PM - 6:00 PM',
-                    `Temp: ${getAggregateTemperature(filteredHourlyWeatherForecastData.slice(6, 8))}°F ${getTemperatureEmoji(
-                        getAggregateTemperature(filteredHourlyWeatherForecastData.slice(6, 8))
-                    )}`,
-                    `${getAggregateRainPercentage(filteredHourlyWeatherForecastData.slice(6, 8))}% ${getRainEmoji( getAggregateRainPercentage(filteredHourlyWeatherForecastData.slice(6, 8)) )}` 
-                ].join('\n'),
-                inline: true
-            }
-        );
-    } else {
-        const forecastTimes = ['5:00 PM', '6:00 PM', '7:00 PM'];
-        forecastTimes.forEach((time, index) => {
-            if (filteredHourlyWeatherForecastData[index]) {
-                weatherForecastEmbed.addFields({
-                    name: `${time} ${weekdayTimeEmojis[index]}`,
-                    value: [
-                        `${filteredHourlyWeatherForecastData[index].values.temperature}°F ${getTemperatureEmoji(
-                            filteredHourlyWeatherForecastData[index].values.temperature
-                        )}`,
-                        `${filteredHourlyWeatherForecastData[index].values.precipitationProbability}%` + getRainEmoji(
-                            filteredHourlyWeatherForecastData[index].values.precipitationProbability
-                        )
-                    ].join('\n'),
-                    inline: true
-                });
-            }
+    for (let i = 0; i < blocks; i++) {
+        const chunk = filteredHourlyWeatherForecastData.slice(i * chunkSize, (i + 1) * chunkSize);
+        if (chunk.length === 0) continue;
+
+        const start = new Date(chunk[0].time);
+        const end = new Date(chunk[chunk.length - 1].time);
+
+        // Aggregate temperature and rain
+        const avgTemp = Math.round(chunk.reduce((sum, h) => sum + h.values.temperature, 0) / chunk.length);
+        const avgRain = Math.round(chunk.reduce((sum, h) => sum + h.values.precipitationProbability, 0) / chunk.length);
+
+        weatherForecastEmbed.addFields({
+            name: `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            value: `${avgTemp}°F ${getTemperatureEmoji(avgTemp)}\n${avgRain}%${getRainEmoji(avgRain)}`,
+            inline: true
         });
     }
-    
+
     weatherForecastEmbed.setFooter({
         text: 'What time is it? Krunch Time!'
     });
+
     try {
         await interaction.reply({ embeds: [weatherForecastEmbed] });
     } catch (error) {
@@ -215,3 +210,4 @@ async function execute(interaction: CommandInteraction) {
 }
 
 export { data, execute }
+
